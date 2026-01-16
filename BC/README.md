@@ -1,93 +1,67 @@
-# Backend Refactoring - Summary
+# ⚙️ Video Cleaner Backend
 
-## ✅ Refactoring Complete
+The backend engine for the Video Cleaner & Processor, written in Go. It handles the heavy lifting of video scanning, trimming, and merging by orchestrating FFmpeg commands.
 
-Your monolithic 1055-line `main.go` has been successfully reorganized into a clean, modular architecture.
+## 🚀 Key Responsibilities
+- **Path Scanning**: Locates MKV files and extracts technical metadata.
+- **FFmpeg Orchestration**: Generates and executes complex FFmpeg commands for stream-copy trimming and merging.
+- **Concurrency Control**: Manages parallel processing of multiple episodes to maximize CPU utilization.
+- **Progress Management**: Maintains a thread-safe global state for real-time progress reporting.
+- **Metadata Management**: Extracts, shifts, and reapplies FFmetadata to maintain chapter integrity across processed files.
 
----
+## 📁 Architecture
+The project follows a modular Go package structure:
+- `/ffmpeg`: Low-level wrappers for `ffmpeg` and `ffprobe`.
+- `/services`: High-level business logic (e.g., `ProcessEpisodes`, `MergeEpisodes`).
+- `/handlers`: HTTP API endpoints.
+- `/models`: Shared data structures and thread-safe state.
+- `/utils`: Helper functions and cleanup logic.
 
-## 📁 New Structure
+## 🛠️ API Endpoints
 
+### `GET /api/scan?path=<folder_path>`
+Scans the specified folder for MKV files and returns the chapter list and audio tracks of the first episode.
+
+### `POST /api/process`
+Starts the video processing task.
+**Body:**
+```json
+{
+  "input": "string",
+  "output": "string",
+  "options": {
+    "skipRanges": [ { "start": "Chapter1", "end": "Chapter2" } ],
+    "parts": 12,
+    "audioIndex": 0
+  }
+}
 ```
-BC/
-├── main.go (20 lines) ← Entry point
-├── models/types.go ← All data structures
-├── ffmpeg/
-│   ├── commands.go ← FFmpeg execution
-│   ├── metadata.go ← Metadata parsing
-│   └── trimmer.go ← Video trimming
-├── services/
-│   ├── video_processor.go ← Main orchestrator
-│   ├── episode_processor.go ← Episode processing
-│   └── merger.go ← Episode merging
-├── handlers/
-│   ├── scan.go ← /api/scan
-│   ├── process.go ← /api/process
-│   └── status.go ← /api/status
-├── utils/
-│   ├── helpers.go ← Utilities
-│   └── cleanup.go ← Cleanup
-└── middleware/cors.go ← CORS
+
+### `GET /api/status`
+Returns the current processing status.
+**Response:**
+```json
+{
+  "total": 24,
+  "completed": 5,
+  "percent": 20.8,
+  "status": "processing",
+  "done": false
+}
 ```
 
----
+## 🏃 Running Locally
 
-## 🎯 What Changed
+### Prerequisites
+- Go 1.21+
+- FFmpeg installed and in PATH.
 
-### Before
-
-- **1 file**: 1055 lines of mixed concerns
-- Hard to navigate and maintain
-- Difficult to test individual components
-
-### After
-
-- **14 files** across 6 packages
-- Clear separation of concerns
-- Each file averages ~75 lines
-- Easy to find and modify functionality
-
----
-
-## ✅ Verification
-
-- ✅ Go module initialized (`videoprocessor`)
-- ✅ All dependencies resolved
-- ✅ Build successful (no errors)
-- ✅ Executable generated: `videoprocessor.exe`
-
----
-
-## 🚀 Usage
-
-**Build and run**:
-
+### Commands
 ```bash
-cd BC
-go build
-./videoprocessor.exe
+go mod download
+go run main.go
 ```
-
-**Server starts on**: `http://localhost:8080`
-
-**Endpoints** (unchanged):
-
-- `GET /api/scan?path=<folder>`
-- `POST /api/process`
-- `GET /api/status`
+The server will start on `http://localhost:8080`.
 
 ---
-
-## 💡 Benefits
-
-1. **Maintainability** - Easy to locate and modify code
-2. **Testability** - Isolated functions for unit testing
-3. **Scalability** - Add features to specific packages
-4. **Readability** - Clear package structure
-5. **Go Best Practices** - Standard project layout
-
----
-
-## 📝 Files
-
-All original code preserved - just reorganized! The old `main.go` has been replaced with a minimal entry point. All functionality remains identical.
+*For full project documentation, see the [main README](../README.md).*

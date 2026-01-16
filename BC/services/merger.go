@@ -72,7 +72,7 @@ func MergeEpisodes(processedFiles []string, metaFiles []string, durations []floa
 		tmpMerged := filepath.Join(output, fmt.Sprintf("Part%d_tmp.mkv", i+1))
 		// concat preserving streams
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-		outb, err := ffmpeg.RunCmd(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-map", "0", "-ignore_unknown", "-c", "copy", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero", tmpMerged)
+		outb, err := ffmpeg.RunCmd(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-map", "0:v?", "-map", "0:a?", "-map", "0:s?", "-ignore_unknown", "-c", "copy", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero", tmpMerged)
 		cancel()
 		_ = os.Remove(listFile)
 		if err != nil {
