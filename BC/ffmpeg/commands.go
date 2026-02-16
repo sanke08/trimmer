@@ -134,7 +134,9 @@ func ScanFirstTwoEpisodes(folder string) (*models.ScanResult, error) {
 	cumulativeTime := 0.0
 	audioTracks := []models.AudioTrack{}
 
-	sort.Strings(mkvFiles)
+	sort.Slice(mkvFiles, func(i, j int) bool {
+		return utils.NaturalLess(mkvFiles[i], mkvFiles[j])
+	})
 
 	for i := 0; i < utils.Min(2, len(mkvFiles)); i++ {
 		file := mkvFiles[i]

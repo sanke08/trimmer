@@ -53,7 +53,8 @@ func TrimSegmentWithMetadata(file string, outputDir string, start, end float64) 
 		"-ss", fmt.Sprintf("%.3f", start), // Place -ss BEFORE -i for faster, accurate keyframe seeking
 		"-i", file,
 		"-to", fmt.Sprintf("%.3f", end),
-		"-map", "0",
+		"-map", "0:v?", // Map video streams
+		"-map", "0:a?", // Map audio streams
 		"-ignore_unknown",
 		"-c", "copy",
 		"-copyts", // Copy timestamps to maintain accuracy
@@ -72,8 +73,8 @@ func TrimSegmentWithMetadata(file string, outputDir string, start, end float64) 
 	if shiftedMeta != "" {
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel2()
-		// ffmpeg -y -i tempTrim -i shiftedMeta -map 0 -map_metadata 1 -c copy finalOut
-		out2, err2 := RunCmd(ctx2, "ffmpeg", "-y", "-i", tempTrim, "-i", shiftedMeta, "-map", "0", "-ignore_unknown", "-map_metadata", "1", "-c", "copy", finalOut)
+		// ffmpeg -y -i tempTrim -i shiftedMeta -map 0:v? -map 0:a? -map_metadata 1 -c copy finalOut
+		out2, err2 := RunCmd(ctx2, "ffmpeg", "-y", "-i", tempTrim, "-i", shiftedMeta, "-map", "0:v?", "-map", "0:a?", "-ignore_unknown", "-map_metadata", "1", "-c", "copy", finalOut)
 		if err2 != nil {
 			// fallback: rename tempTrim to finalOut
 			_ = os.Rename(tempTrim, finalOut)

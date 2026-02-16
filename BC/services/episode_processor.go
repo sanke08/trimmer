@@ -70,8 +70,8 @@ func ProcessSingleEpisode(file string, output string, ch models.Chapters, opts m
 		mergedEpisode := filepath.Join(output, fmt.Sprintf("merged_%s_%d.mkv", strings.TrimSuffix(filepath.Base(file), filepath.Ext(file)), time.Now().UnixNano()))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		// Use -map 0 to copy ALL streams (video, all audio, all subtitles)
-		outb, err := ffmpeg.RunCmd(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-map", "0", "-ignore_unknown", "-c", "copy", mergedEpisode)
+		// Use explicit mapping to copy only video and audio, NOT subtitles
+		outb, err := ffmpeg.RunCmd(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-map", "0:v?", "-map", "0:a?", "-ignore_unknown", "-c", "copy", mergedEpisode)
 		os.Remove(listFile)
 		if err != nil {
 			return "", "", 0, fmt.Errorf("ffmpeg concat episode parts failed: %v (%s)", err, string(outb))

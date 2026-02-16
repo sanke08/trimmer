@@ -16,7 +16,10 @@ import (
 // ProcessEpisodes is the main orchestrator for processing all episodes
 func ProcessEpisodes(input, output string, opts models.TrimOptions) error {
 	files, _ := filepath.Glob(filepath.Join(input, "*.mkv"))
-	sort.Strings(files)
+	// Use Natural Sort so "Episode 2" comes before "Episode 10"
+	sort.Slice(files, func(i, j int) bool {
+		return utils.NaturalLess(files[i], files[j])
+	})
 	os.MkdirAll(output, 0755)
 
 	models.ProgressState.Update(func(p *models.Progress) {

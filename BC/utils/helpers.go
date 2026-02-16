@@ -4,7 +4,49 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
+
+// NaturalLess compares two strings using natural sort order (e.g., "file2" < "file10")
+func NaturalLess(str1, str2 string) bool {
+	i, j := 0, 0
+	for i < len(str1) && j < len(str2) {
+		r1 := rune(str1[i])
+		r2 := rune(str2[j])
+
+		if unicode.IsDigit(r1) && unicode.IsDigit(r2) {
+			// Scan numbers
+			start1, start2 := i, j
+			for i < len(str1) && unicode.IsDigit(rune(str1[i])) {
+				i++
+			}
+			for j < len(str2) && unicode.IsDigit(rune(str2[j])) {
+				j++
+			}
+
+			// Get number strings and trim leading zeros
+			num1 := strings.TrimLeft(str1[start1:i], "0")
+			num2 := strings.TrimLeft(str2[start2:j], "0")
+
+			if len(num1) != len(num2) {
+				return len(num1) < len(num2)
+			}
+			if num1 != num2 {
+				return num1 < num2
+			}
+			// If numbers are equal (e.g. 01 vs 1), continue comparing remainder
+			// But since we advanced i and j, we continue loop
+			continue
+		}
+
+		if r1 != r2 {
+			return r1 < r2
+		}
+		i++
+		j++
+	}
+	return len(str1) < len(str2)
+}
 
 // Min returns the minimum of two integers
 func Min(a, b int) int {

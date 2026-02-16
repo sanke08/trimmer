@@ -72,7 +72,7 @@ func MergeEpisodes(processedFiles []string, metaFiles []string, durations []floa
 		tmpMerged := filepath.Join(output, fmt.Sprintf("Part%d_tmp.mkv", i+1))
 		// concat preserving streams
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-		outb, err := ffmpeg.RunCmd(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-map", "0:v?", "-map", "0:a?", "-map", "0:s?", "-ignore_unknown", "-c", "copy", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero", tmpMerged)
+		outb, err := ffmpeg.RunCmd(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-map", "0:v?", "-map", "0:a?", "-ignore_unknown", "-c", "copy", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero", tmpMerged)
 		cancel()
 		_ = os.Remove(listFile)
 		if err != nil {
@@ -92,7 +92,7 @@ func MergeEpisodes(processedFiles []string, metaFiles []string, durations []floa
 		partFinal := filepath.Join(output, fmt.Sprintf("Part%d.mkv", i+1))
 		if partMetaOut != "" {
 			ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Minute)
-			outb2, err2 := ffmpeg.RunCmd(ctx2, "ffmpeg", "-y", "-i", tmpMerged, "-i", partMetaOut, "-map", "0", "-ignore_unknown", "-map_metadata", "1", "-c", "copy", partFinal)
+			outb2, err2 := ffmpeg.RunCmd(ctx2, "ffmpeg", "-y", "-i", tmpMerged, "-i", partMetaOut, "-map", "0:v?", "-map", "0:a?", "-ignore_unknown", "-map_metadata", "1", "-c", "copy", partFinal)
 			cancel2()
 			if err2 != nil {
 				// fallback to tmpMerged
