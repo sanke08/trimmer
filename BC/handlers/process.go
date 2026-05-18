@@ -20,6 +20,15 @@ func ProcessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	models.ProgressState.Update(func(p *models.Progress) {
+		p.Status = "processing"
+		p.Done = false
+		p.Total = 0
+		p.Completed = 0
+		p.Percent = 0
+		p.Episodes = nil
+		p.Parts = nil
+	})
 	go services.ProcessEpisodes(req.Input, req.Output, req.Options)
 	w.Write([]byte(`{"status":"started"}`))
 }

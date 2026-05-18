@@ -22,12 +22,19 @@ func ProcessEpisodes(input, output string, opts models.TrimOptions) error {
 	})
 	os.MkdirAll(output, 0755)
 
+	episodes := make([]models.EpisodeStatus, len(files))
+	for i, f := range files {
+		episodes[i] = models.EpisodeStatus{Name: filepath.Base(f), State: "pending"}
+	}
+
 	models.ProgressState.Update(func(p *models.Progress) {
 		p.Total = len(files)
 		p.Completed = 0
 		p.Percent = 0
 		p.Status = "processing"
 		p.Done = false
+		p.Episodes = episodes
+		p.Parts = nil
 	})
 
 	type Result struct {
@@ -47,18 +54,53 @@ func ProcessEpisodes(input, output string, opts models.TrimOptions) error {
 			defer wg.Done()
 			log.Printf("▶️ [%02d] Starting -> %s", idx+1, file)
 
+			models.ProgressState.Update(func(p *models.Progress) {
+				if idx < len(p.Episodes) {
+					p.Episodes[idx].State = "processing"
+				}
+			})
+
 			ch, err := ffmpeg.ScanChapters(file)
 			if err != nil {
+				models.ProgressState.Update(func(p *models.Progress) {
+					if idx < len(p.Episodes) {
+						p.Episodes[idx].State = "failed"
+						p.Episodes[idx].Error = fmt.Sprintf("scan failed: %v", err)
+					}
+					p.Completed++
+					if p.Total > 0 {
+						p.Percent = float64(p.Completed) / float64(p.Total) * 100
+					}
+				})
 				results <- Result{idx, "", "", 0, fmt.Errorf("scan failed: %v", err)}
 				return
 			}
 
 			finalFile, metaFile, dur, err := ProcessSingleEpisode(file, output, ch, opts)
 			if err != nil {
+				models.ProgressState.Update(func(p *models.Progress) {
+					if idx < len(p.Episodes) {
+						p.Episodes[idx].State = "failed"
+						p.Episodes[idx].Error = fmt.Sprintf("process failed: %v", err)
+					}
+					p.Completed++
+					if p.Total > 0 {
+						p.Percent = float64(p.Completed) / float64(p.Total) * 100
+					}
+				})
 				results <- Result{idx, "", "", 0, fmt.Errorf("process failed: %v", err)}
 				return
 			}
 
+			models.ProgressState.Update(func(p *models.Progress) {
+				if idx < len(p.Episodes) {
+					p.Episodes[idx].State = "done"
+				}
+				p.Completed++
+				if p.Total > 0 {
+					p.Percent = float64(p.Completed) / float64(p.Total) * 100
+				}
+			})
 			results <- Result{idx, finalFile, metaFile, dur, nil}
 		}(i, f)
 	}
@@ -86,21 +128,19 @@ func ProcessEpisodes(input, output string, opts models.TrimOptions) error {
 		processedFiles = append(processedFiles, r.File)
 		metaFiles = append(metaFiles, r.Meta)
 		durations = append(durations, r.Duration)
-
-		models.ProgressState.Update(func(p *models.Progress) {
-			p.Completed++
-			if p.Total > 0 {
-				p.Percent = (float64(p.Completed) / float64(p.Total)) * 100
-			}
-		})
 	}
 
 	// Merge processed files (parts)
+	partStatuses := make([]models.PartStatus, opts.Parts)
+	for i := range partStatuses {
+		partStatuses[i] = models.PartStatus{Name: fmt.Sprintf("Part %d", i+1), State: "pending"}
+	}
 	models.ProgressState.Update(func(p *models.Progress) {
 		p.Status = "merging"
 		p.Completed = 0
 		p.Total = opts.Parts
 		p.Percent = 0
+		p.Parts = partStatuses
 	})
 
 	if err := MergeEpisodes(processedFiles, metaFiles, durations, output, opts.Parts); err != nil {

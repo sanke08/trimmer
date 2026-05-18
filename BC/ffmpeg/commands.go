@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +22,136 @@ func RunCmd(ctx context.Context, name string, args ...string) ([]byte, error) {
 	// make windows hide window if available
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	return cmd.CombinedOutput()
+}
+
+// GetVideoResolution returns the width and height of the first video stream
+func GetVideoResolution(path string) (int, int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := RunCmd(ctx, "ffprobe", "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", path)
+	if err != nil {
+		return 0, 0, fmt.Errorf("ffprobe resolution failed: %v (%s)", err, string(out))
+	}
+	parts := strings.SplitN(strings.TrimSpace(string(out)), "x", 2)
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected resolution output: %s", string(out))
+	}
+	w, err1 := strconv.Atoi(parts[0])
+	h, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil {
+		return 0, 0, fmt.Errorf("parse resolution failed: %s", string(out))
+	}
+	return w, h, nil
+}
+
+// GetAudioStreamCount returns the number of audio streams in a file
+func GetAudioStreamCount(path string) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := RunCmd(ctx, "ffprobe", "-v", "error", "-select_streams", "a",
+		"-show_entries", "stream=index", "-of", "csv=p=0", path)
+	if err != nil {
+		return 0, fmt.Errorf("ffprobe audio streams failed: %v (%s)", err, string(out))
+	}
+	lines := 0
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.TrimSpace(l) != "" {
+			lines++
+		}
+	}
+	return lines, nil
+}
+
+// GetVideoCodecAndPixFmt returns the codec name and pix_fmt of the first video stream
+func GetVideoCodecAndPixFmt(path string) (codec string, pixFmt string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, _ := RunCmd(ctx, "ffprobe", "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "stream=codec_name,pix_fmt", "-of", "csv=p=0", path)
+	parts := strings.SplitN(strings.TrimSpace(string(out)), ",", 2)
+	if len(parts) == 2 {
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+	return "h264", "yuv420p"
+}
+
+// NormalizeStreams re-encodes src to match targetW x targetH resolution and targetAudioCount audio streams.
+// Missing audio streams are filled with silent tracks. Encoder and pixel format are matched to the target file's codec.
+func NormalizeStreams(src, dst string, targetW, targetH, targetAudioCount int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+	defer cancel()
+
+	srcW, srcH, _ := GetVideoResolution(src)
+	srcAudio, _ := GetAudioStreamCount(src)
+
+	args := []string{"-y", "-i", src}
+
+	// add silent audio inputs for missing tracks
+	silentInputIdx := 1
+	for i := srcAudio; i < targetAudioCount; i++ {
+		args = append(args, "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo")
+		silentInputIdx++
+	}
+
+	// video: scale if resolution differs, choosing encoder to match source codec
+	if srcW != targetW || srcH != targetH {
+		srcCodec, srcPixFmt := GetVideoCodecAndPixFmt(src)
+		scale := fmt.Sprintf("scale=%d:%d:flags=lanczos,setsar=1", targetW, targetH)
+
+		var encoder, preset string
+		switch srcCodec {
+		case "hevc", "h265":
+			encoder = "libx265"
+			preset = "ultrafast"
+		default:
+			encoder = "libx264"
+			preset = "fast"
+		}
+		args = append(args, "-vf", scale, "-c:v", encoder, "-preset", preset, "-crf", "18", "-pix_fmt", srcPixFmt)
+	} else {
+		args = append(args, "-c:v", "copy")
+	}
+
+	// map video
+	args = append(args, "-map", "0:v?")
+
+	// map existing audio streams
+	for i := 0; i < srcAudio && i < targetAudioCount; i++ {
+		args = append(args, "-map", fmt.Sprintf("0:a:%d", i))
+	}
+	// map silent tracks for missing audio
+	for i := srcAudio; i < targetAudioCount; i++ {
+		silentStream := i - srcAudio + 1
+		args = append(args, "-map", fmt.Sprintf("%d:a", silentStream))
+	}
+
+	args = append(args, "-c:a", "copy", "-ignore_unknown", "-avoid_negative_ts", "make_zero", dst)
+
+	out, err := RunCmd(ctx, "ffmpeg", args...)
+	if err != nil {
+		return fmt.Errorf("normalize streams failed: %v (%s)", err, string(out))
+	}
+	return nil
+}
+
+// GetStartTime returns the PTS of the first video packet in seconds.
+// Used to detect the real keyframe cut point after a stream-copy trim.
+func GetStartTime(path string) (float64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := RunCmd(ctx, "ffprobe", "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "packet=pts_time",
+		"-read_intervals", "%+#1",
+		"-of", "csv=p=0", path)
+	if err != nil {
+		return 0, fmt.Errorf("ffprobe start time failed: %v (%s)", err, string(out))
+	}
+	s := strings.TrimSpace(string(out))
+	if s == "" {
+		return 0, fmt.Errorf("empty start time")
+	}
+	return strconv.ParseFloat(s, 64)
 }
 
 // GetDuration gets the duration of a video file using ffprobe
@@ -105,29 +236,11 @@ func ScanChapters(file string) (models.Chapters, error) {
 
 // ScanFirstTwoEpisodes scans the first two episodes in a folder for analysis
 func ScanFirstTwoEpisodes(folder string) (*models.ScanResult, error) {
-	// Normalize path for Windows - keep backslashes for Windows commands
 	folder = strings.TrimSpace(folder)
-	folder = strings.ReplaceAll(folder, "/", "\\")
 
-	// Use dir command to list .mkv files (Windows style with backslashes)
-	pattern := folder + "\\*.mkv"
-	files, err := exec.Command("cmd", "/c", "dir", "/b", pattern).Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list files in %s: %v", folder, err)
-	}
-
-	fileList := strings.Split(strings.TrimSpace(string(files)), "\n")
-	var mkvFiles []string
-	for _, f := range fileList {
-		f = strings.TrimSpace(f)
-		f = strings.ReplaceAll(f, "\r", "") // Remove carriage return
-		if f != "" {
-			mkvFiles = append(mkvFiles, folder+"\\"+f)
-		}
-	}
-
-	if len(mkvFiles) < 2 {
-		return nil, fmt.Errorf("less than 2 MKV files found in %s", folder)
+	mkvFiles, err := filepath.Glob(filepath.Join(folder, "*.mkv"))
+	if err != nil || len(mkvFiles) < 1 {
+		return nil, fmt.Errorf("no MKV files found in %s", folder)
 	}
 
 	chapters := make(models.Chapters)

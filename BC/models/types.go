@@ -25,6 +25,15 @@ type SkipRange struct {
 	End   string `json:"end"`
 }
 
+// NormTarget holds the target resolution and audio count that all episodes must match
+type NormTarget struct {
+	Width      int
+	Height     int
+	AudioCount int
+	Codec      string
+	PixFmt     string
+}
+
 // TrimOptions contains options for trimming operations
 type TrimOptions struct {
 	SkipRanges []SkipRange `json:"skipRanges"`
@@ -32,13 +41,29 @@ type TrimOptions struct {
 	AudioIndex int         `json:"audioIndex"` // Default audio track (not used for removal, just for reference)
 }
 
+// EpisodeStatus tracks the status of a single episode
+type EpisodeStatus struct {
+	Name   string `json:"name"`
+	State  string `json:"state"` // "pending" | "processing" | "done" | "failed"
+	Error  string `json:"error,omitempty"`
+}
+
+// PartStatus tracks the status of a merge part
+type PartStatus struct {
+	Name  string `json:"name"`
+	State string `json:"state"` // "pending" | "merging" | "done" | "failed"
+	Error string `json:"error,omitempty"`
+}
+
 // Progress tracks the progress of video processing
 type Progress struct {
-	Total     int     `json:"total"`
-	Completed int     `json:"completed"`
-	Percent   float64 `json:"percent"`
-	Status    string  `json:"status"`
-	Done      bool    `json:"done"`
+	Total     int             `json:"total"`
+	Completed int             `json:"completed"`
+	Percent   float64         `json:"percent"`
+	Status    string          `json:"status"`
+	Done      bool            `json:"done"`
+	Episodes  []EpisodeStatus `json:"episodes,omitempty"`
+	Parts     []PartStatus    `json:"parts,omitempty"`
 	mu        sync.Mutex
 }
 

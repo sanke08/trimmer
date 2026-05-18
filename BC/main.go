@@ -13,8 +13,10 @@ func main() {
 	mux.HandleFunc("/api/scan", handlers.ScanHandler)
 	mux.HandleFunc("/api/process", handlers.ProcessHandler)
 	mux.HandleFunc("/api/status", handlers.StatusHandler)
+	mux.HandleFunc("/api/add-chapter", handlers.AddChapterHandler)
+	mux.HandleFunc("/api/shift-chapter", handlers.ShiftChapterHandler)
 
 	handler := middleware.EnableCORS(mux)
-	log.Println("🚀 Server running at http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", handler))
+	log.Println("🚀 Server running at http://localhost:9000")
+	log.Fatal(http.ListenAndServe(":9000", handler))
 }

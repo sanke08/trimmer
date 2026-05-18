@@ -14,7 +14,8 @@ import (
 	"github.com/sanke08/videoprocessor/utils"
 )
 
-// ProcessSingleEpisode processes a single episode with trimming and metadata preservation
+// ProcessSingleEpisode processes a single episode with trimming and metadata preservation.
+// norm, if non-nil, causes any resolution mismatch to be corrected inline during trim.
 func ProcessSingleEpisode(file string, output string, ch models.Chapters, opts models.TrimOptions) (string, string, float64, error) {
 	log.Printf("📼 Processing: %s", filepath.Base(file))
 
@@ -70,7 +71,6 @@ func ProcessSingleEpisode(file string, output string, ch models.Chapters, opts m
 		mergedEpisode := filepath.Join(output, fmt.Sprintf("merged_%s_%d.mkv", strings.TrimSuffix(filepath.Base(file), filepath.Ext(file)), time.Now().UnixNano()))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		// Use explicit mapping to copy only video and audio, NOT subtitles
 		outb, err := ffmpeg.RunCmd(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-map", "0:v?", "-map", "0:a?", "-ignore_unknown", "-c", "copy", mergedEpisode)
 		os.Remove(listFile)
 		if err != nil {

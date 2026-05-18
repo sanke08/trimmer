@@ -57,6 +57,12 @@ func MergeEpisodes(processedFiles []string, metaFiles []string, durations []floa
 			continue
 		}
 
+		models.ProgressState.Update(func(p *models.Progress) {
+			if i < len(p.Parts) {
+				p.Parts[i].State = "merging"
+			}
+		})
+
 		// concat list
 		listFile := filepath.Join(output, fmt.Sprintf("merge_part_%d_%d.txt", i+1, time.Now().UnixNano()))
 		f, err := os.Create(listFile)
@@ -76,6 +82,12 @@ func MergeEpisodes(processedFiles []string, metaFiles []string, durations []floa
 		cancel()
 		_ = os.Remove(listFile)
 		if err != nil {
+			models.ProgressState.Update(func(p *models.Progress) {
+				if i < len(p.Parts) {
+					p.Parts[i].State = "failed"
+					p.Parts[i].Error = fmt.Sprintf("concat failed: %v", err)
+				}
+			})
 			return fmt.Errorf("concat failed for part %d: %v (%s)", i+1, err, string(outb))
 		}
 
@@ -106,33 +118,13 @@ func MergeEpisodes(processedFiles []string, metaFiles []string, durations []floa
 			_ = os.Rename(tmpMerged, partFinal)
 		}
 
-		// ✨ Extract all audio and subtitle tracks from the FINAL merged part
-		// log.Printf("🎵📝 Extracting tracks from Part%d.mkv...", i+1)
-
-		// // Extract audios
-		// audioMap, err := ffmpeg.ExtractAllAudioTracks(partFinal, output)
-		// if err != nil {
-		// 	log.Printf("⚠️ Audio extraction warning for Part%d: %v", i+1, err)
-		// } else {
-		// 	log.Printf("✅ Extracted %d audio track(s) from Part%d", len(audioMap), i+1)
-		// 	// Rename audio files to Part format
-		// 	renameExtractedTracks(audioMap, output, "audios", i+1, "mka")
-		// }
-
-		// // Extract subtitles
-		// subsMap, err := ffmpeg.ExtractAllSubtitles(partFinal, output)
-		// if err != nil {
-		// 	log.Printf("⚠️ Subtitle extraction warning for Part%d: %v", i+1, err)
-		// } else {
-		// 	log.Printf("✅ Extracted %d subtitle track(s) from Part%d", len(subsMap), i+1)
-		// 	// Rename subtitle files to Part format
-		// 	renameExtractedTracks(subsMap, output, "subtitles", i+1, "srt")
-		// }
-
 		models.ProgressState.Update(func(p *models.Progress) {
 			p.Completed++
 			if p.Total > 0 {
 				p.Percent = (float64(p.Completed) / float64(p.Total)) * 100
+			}
+			if i < len(p.Parts) {
+				p.Parts[i].State = "done"
 			}
 		})
 	}
